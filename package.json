@@ -1,6 +1,6 @@
 {
   "name": "@future-scholars/paperlib-community-comments-extension",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "author": "Paperlib",
   "description": "Paperlib extension showing comments from communities, such as alphaxiv.org",
   "main": "dist/main.js",

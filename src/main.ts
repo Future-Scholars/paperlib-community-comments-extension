@@ -54,7 +54,7 @@ class PaperlibCommunityCommentsExtension extends PLExtension {
     await PLAPI.uiSlotService.updateSlot("paperDetailsPanelSlot3", {
       "paperlib-community-comments": {
         title: title,
-        content: `N/A`,
+        content: `loading...`,
       },
     });
 
@@ -145,17 +145,36 @@ class PaperlibCommunityCommentsExtension extends PLExtension {
             true
           );
           const latestVersion = latestVersionResponse.body.version;
-
-          const response = await PLExtAPI.networkTool.post(
-            `${this._APIURL}/papers/questions/${latestVersion}/true`,
-            {"tags": null},
-            {},
-            1,
-            5000,
-            false,
-            true
-          );
+          const arxivId = paperEntity.arxiv.replaceAll("arxiv:", "").split("v")[0];
+          const versionNum = latestVersion.split("v").length > 1 ? latestVersion.split("v")[1] : -1;
+          const versionNums: string[] = []
+          if (versionNum === -1) {
+            versionNums.push("");
+          } else {
+            for (let i = versionNum; i >= 1; i--) {
+              versionNums.push(`${i}`);
+            }
+          }
           
+          let response;
+          for (const version of versionNums) {
+            const requestVersion = version === "" ? latestVersion : `${arxivId}v${version}`;
+
+            response = await PLExtAPI.networkTool.post(
+              `${this._APIURL}/papers/questions/${requestVersion}/true`,
+              {"tags": null},
+              {},
+              1,
+              5000,
+              false,
+              true
+            );
+
+            if (response.statusCode === 200 && response.body.bodyarr.length > 0) {
+              break;
+            }
+          }
+
           interface IComment {
             date: string;
             body: string;
