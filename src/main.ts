@@ -128,14 +128,13 @@ class PaperlibCommunityCommentsExtension extends PLExtension {
       
       versionNums = Array.from(new Set(versionNums));
 
-      let response = { statusCode: 404, body: { bodyarr: [] } };
+      let response = { statusCode: 404, body: "" };
       for (const version of versionNums) {
         const requestVersion = `${arxivId}${version !== "" ? "v" + version : ""}`;
         
         try {
-          response = await PLExtAPI.networkTool.post(
-            `https://api.alphaxiv.org/v1/papers/questions/${requestVersion}/true`,
-            {"tags": null},
+          response = await PLExtAPI.networkTool.get(
+            `https://www.alphaxiv.org/abs/${requestVersion}`,
             {},
             1,
             5000,
@@ -152,24 +151,35 @@ class PaperlibCommunityCommentsExtension extends PLExtension {
           continue;
         }
 
-        if (response.statusCode === 200 && response.body.bodyarr.length > 0) {
+        if (response.statusCode === 200) {
           break;
         }
       }
 
       interface IComment {
-        date: string;
-        body: string;
-        upvotes: number;
-        author: string;
-        institution?: string,
-        responses?: IComment[]
+        dateCreated: string;
+        text: string;
+        upvoteCount: number;
+        author: { name: string };
+        comment?: IComment[]
       }
-      const data = response.body as {
-        "bodyarr": IComment[]
+      let data: IComment[] = [];
+
+      try {
+        const root = parse(response.body);
+        // get content of #root > script
+        const commentJSONStr = root.querySelector("#root > script")?.rawText || "";
+        data = JSON.parse(commentJSONStr)["comment"];
+      } catch (err) {
+        PLAPI.logService.error(
+          "Failed to parse data from alphaxiv.org",
+          err as Error,
+          false,
+          "CommunityCommentsExt"
+        );
       }
 
-      if (data.bodyarr.length === 0) {
+      if (data.length === 0) {
         return `<div class='flex mt-1'>
                   <div class='flex space-x-1 bg-neutral-200 dark:bg-neutral-700 rounded-md p-1 hover:bg-neutral-300 hover:dark:bg-neutral-600 hover:shadow-sm select-none cursor-pointer'>
                     <a href='https://alphaxiv.org/abs/${latestVersion}'>${lang === 'zh-CN' ? '评论' : 'Post'}</a>
@@ -177,34 +187,27 @@ class PaperlibCommunityCommentsExtension extends PLExtension {
                 </div>`;
       }
 
-      const commentsBody = data.bodyarr.map((comment) => {
+      const commentsBody = data.map((comment) => {
         return `
-        <div class='flex flex-col text-justify pr-2 py-2'>
-          <div class='flex flex-col'>
-            <div class='flex justify-between'>
-              <div class='font-semibold my-auto'>${comment.author + (comment.institution ? '@' + comment.institution : '')}</div>
-              <div class='my-auto flex space-x-1'>
-                ${comment.upvotes > 0 ? thumIcon + '<span>' + comment.upvotes + '</span>' : ''}
-              </div>
-            </div>
-
-            <div class='flex space-x-2 text-neutral-400'>
-              <div>alphaxiv.org</div>
-              <div >${(new Date(comment.date).toLocaleDateString())}</div>
+        <div class='flex flex-col text-justify pr-2 py-1'>
+          <div class='flex justify-between'>
+            <div class='my-auto flex justify-start space-x-1'><span class="font-semibold my-auto">${comment.author.name}</span> <span class="text-neutral-400 my-auto">@</span> <span class="text-neutral-400 my-auto">alphaxiv.org ${(new Date(comment.dateCreated).toLocaleDateString())}</span></div>
+            <div class='my-auto flex space-x-1'>
+              ${comment.upvoteCount > 0 ? thumIcon + '<span>' + comment.upvoteCount + '</span>' : ''}
             </div>
           </div>
-          <div class='dark:text-neutral-300'><a href=https://alphaxiv.org/abs/${latestVersion}>${comment.body.replace(/style=".*?"/g, "")}</a></div>
-          <div class='flex flex-col pl-6 ${comment.responses && comment.responses.length > 0 ? 'pt-2' : ''}'>
-            ${comment.responses ? comment.responses.map((response) => {
+          <div class='dark:text-neutral-300'><a href=https://alphaxiv.org/abs/${latestVersion}>${comment.text.replace(/style=".*?"/g, "")}</a></div>
+          <div class='flex flex-col pl-6 ${comment.comment && comment.comment.length > 0 ? 'pt-2' : ''}'>
+            ${comment.comment ? comment.comment.map((response) => {
               return `
               <div class='flex flex-col text-justify'>
                 <div class='flex justify-between'>
-                  <div class='my-auto font-semibold'>${response.author}</div>
+                  <div class='my-auto flex justify-start space-x-1'><span class="font-semibold my-auto">${response.author.name}</span> <span class="text-neutral-400 my-auto">@</span> <span class="text-neutral-400 my-auto">alphaxiv.org ${(new Date(comment.dateCreated).toLocaleDateString())}</span></div>
                   <div class='my-auto flex space-x-1'>
-                    ${response.upvotes > 0 ? thumIcon + '<span>' + response.upvotes + '</span>' : ''}
+                    ${response.upvoteCount > 0 ? thumIcon + '<span>' + response.upvoteCount + '</span>' : ''}
                   </div>
                 </div>
-                <div class='dark:text-neutral-300'><a href=https://alphaxiv.org/abs/${latestVersion}>${comment.body.replace(/style=".*?"/g, "")}</a></div>
+                <div class='dark:text-neutral-300'><a href=https://alphaxiv.org/abs/${latestVersion}>${response.text.replace(/style=".*?"/g, "")}</a></div>
               </div>`;
             }).join("<div class='dark:bg-neutral-700 bg-neutral-300 h-[1px] w-full my-2'></div>") : ''}
           </div>
@@ -213,12 +216,12 @@ class PaperlibCommunityCommentsExtension extends PLExtension {
       }).join("<div class='dark:bg-neutral-700 bg-neutral-300 h-[1px] w-full'></div>");
 
       return `<div class='flex flex-col mt-1'>
-                <div class='flex'>
+                <div class='flex flex-col space-y-2'>${commentsBody}</div>
+                <div class='flex mt-2'>
                   <div class='flex space-x-1 bg-neutral-200 dark:bg-neutral-700 rounded-md p-1 hover:bg-neutral-300 hover:dark:bg-neutral-600 hover:shadow-sm select-none cursor-pointer'>
                     <a href='https://alphaxiv.org/abs/${latestVersion}'>${lang === 'zh-CN' ? '评论' : 'Post'}</a>
                   </div>
                 </div>
-                <div class='flex flex-col space-y-2'>${commentsBody}</div>
               </div>
 `;
     } catch (err) {
